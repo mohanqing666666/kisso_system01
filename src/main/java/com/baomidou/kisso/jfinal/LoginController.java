@@ -1,114 +1,128 @@
-/**
- * Copyright (c) 2011-2014, hubin (243194995@qq.com).
- *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License. You may obtain a copy of
- * the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
- * the License.
- */
 package com.baomidou.kisso.jfinal;
 
-import com.baomidou.kisso.MyToken;
-import com.baomidou.kisso.Res;
+import java.io.IOException;
+import com.alibaba.fastjson.JSONObject;
+import com.baomidou.kisso.AuthToken;
+import com.baomidou.kisso.SSOConfig;
 import com.baomidou.kisso.SSOHelper;
-import com.baomidou.kisso.common.IpHelper;
-import com.baomidou.kisso.common.util.HttpUtil;
-import com.baomidou.kisso.web.waf.request.WafRequestWrapper;
+import com.baomidou.kisso.SSOToken;
+import com.baomidou.kisso.common.SSOProperties;
 import com.jfinal.core.Controller;
 
 /**
- * 登录
+ * 
+ * @author moshuai
+ *
  */
 public class LoginController extends Controller {
-
+	/**
+	 * 
+	
+	* <p>Title: LoginController.java</p>  
+	
+	* <p>Description: 子系统登录，重定向到sso认证</p>  
+	
+	
+	* @author moshuai
+	
+	* @date 2019年8月11日
+	 */
 	public void index() {
-		MyToken mt = SSOHelper.getToken(getRequest());
-		if ( mt != null ) {
-			redirect("/");
+		SSOToken token = SSOHelper.getToken(getRequest());
+		if ( token == null) {
+			/**
+			 * 重定向至代理跨域地址页
+			 */
+			redirect("http://sso.test.com:8080/login?ReturnURL=http://my.web.com:8090/login/proxylogin");
 			return;
+		}else {
+			setAttr("userId", token.getUid());//用于登录成功后名称相似
 		}
-
-		/**
-		 * 登录 生产环境需要过滤sql注入
-		 */
-		if ( HttpUtil.isPost(getRequest()) ) {
-			WafRequestWrapper req = new WafRequestWrapper(getRequest());
-			String username = req.getParameter("username");
-			String password = req.getParameter("password");
-			if ( "kisso".equals(username) && "123".equals(password) ) {
-				/**
-				 * 系统定义 SSOToken st = new SSOToken();
-				 * <p>
-				 * 自定义 MyToken
-				 * </p>
-				 */
-				mt = new MyToken();
-				mt.setId(1000L);
-				mt.setUid("1000");
-				mt.setAbc(" MyToken abc 测试 ...");
-				mt.setIp(IpHelper.getIpAddr(getRequest()));
-				
-				//记住密码，设置 cookie 时长 1 周 = 604800 秒 【动态设置 maxAge 实现记住密码功能】
-				//String rememberMe = req.getParameter("rememberMe");
-				//if ( "on".equals(rememberMe) ) {
-				//	request.setAttribute(SSOConfig.SSO_COOKIE_MAXAGE, 604800); 
-				//}
-				
-				SSOHelper.setSSOCookie(getRequest(), getResponse(), mt, true);
-				redirect("/");
-				return;
-			}
+		render("index.html");
+	}
+	
+	/**
+	 * 
+	
+	* <p>Title: LoginController.java</p>  
+	
+	* <p>Description:kisso验证属性配置 </p>  
+	
+	
+	* @author moshuai
+	
+	* @date 2019年8月11日
+	 */
+	public void proxylogin() {
+	    // 用户自定义配置获取 由于不确定性，kisso 提倡，用户自己定义配置。
+         SSOProperties prop = SSOConfig.getSSOProperties();
+         //业务系统私钥签名 authToken 自动设置临时会话 cookie 授权后自动销毁
+         AuthToken at = SSOHelper.askCiphertext(getRequest(), getResponse(), prop.get("sso.defined.my_private_key"));
+       //at.getUuid() 作为 key 设置 authToken 至分布式缓存中，然后 sso 系统二次验证
+         
+         //askurl 询问 sso 是否登录地址
+         String askurl = prop.get("sso.defined.askurl");
+       //  getRequest().setAttribute("askurl", askurl);
+         setAttr("askurl", askurl);
+         //askTxt 询问 token 密文
+         String askData =  at.encryptAuthToken();
+       //  getRequest().setAttribute("askData", askData);
+         setAttr("askData", askData);
+         //my 确定是否登录地址
+         String okurl =  prop.get("sso.defined.oklogin");
+        // getRequest().setAttribute("okurl", okurl);
+         setAttr("okurl", okurl);
+         render("proxylogin.jsp");
+	}
+	/**
+	 * 
+	
+	* <p>Title: LoginController.java</p>  
+	
+	* <p>Description:回复秘文验证 </p>  
+	
+	
+	* @author moshuai
+	
+	* @date 2019年8月11日
+	 */
+	public void oklogin() {
+		 String returl = "http://my.web.com:8090/logout/timeout.html";
+	        //回复密文是否存在 SSO 公钥验证回复密文是否正确 设置 MY 系统自己的 Cookie
+	     String replyTxt = getRequest().getParameter("replyTxt");
+	     if (replyTxt != null && !"".equals(replyTxt)) {
+	            // 用户自定义配置获取 由于不确定性，kisso 提倡，用户自己定义配置。
+	            SSOProperties prop = SSOConfig.getSSOProperties();
+	        	AuthToken at = SSOHelper.ok(getRequest(), getResponse(), replyTxt, prop.get("sso.defined.my_public_key"),prop.get("sso.defined.sso_public_key"));
+	            if (at != null) {
+	                returl = "http://my.web.com:8090/login";
+	                SSOToken st = new SSOToken();
+	                st.setUid(at.getUid());
+	                st.setTime(at.getTime());
+	                
+	                //设置 true 时添加 cookie 同时销毁当前 JSESSIONID 创建信任的 JSESSIONID
+	                SSOHelper.setSSOCookie(getRequest(), getResponse(), st, true);
+	            }
+	        }
+	     JSONObject json =  new JSONObject();  
+	     json.put("returl", returl);
+	     renderJson(json); 
+	}
+	public void syspage() {
+		render("index.html");
+	}
+	public void logout() {
+		try {
+			SSOHelper.logout(getRequest(), getResponse());
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
+//		SSOHelper.clearLogin(getRequest(), getResponse());
 		render("login.html");
 	}
+   
 
-
-	/**
-	 * <p>
-	 * 支持APP端登录
-	 * <br>
-	 * 调用时需要为请求Header设置PLATFORM=APP
-	 * 否则请求将不会被kisso处理，而直接视为jFinal的controller
-	 * </p>
-	 * 
-	 * @author 成都瘦人  lendo.du@gmail.com
-	 * 
-	 */
-	public void auth() {
-		Res res = new Res();
-		MyToken token = (MyToken) SSOHelper.getToken(getRequest());
-		if ( token != null ) {
-			renderJson(res);
-			return;
-		} else {
-			if ( HttpUtil.isPost(getRequest()) ) {
-				WafRequestWrapper req = new WafRequestWrapper(getRequest());
-				String username = req.getParameter("username");
-				String password = req.getParameter("password");
-				if ( "admin".equals(username) && "admin".equals(password) ) {
-					token = new MyToken();
-					token.setUid("1000");
-					token.setAbc(" MyToken abc 测试 ...");
-					token.setIp(IpHelper.getIpAddr(getRequest()));
-					SSOHelper.setSSOCookie(getRequest(), getResponse(), token, true);
-					res.setData("已下发Cookies至响应");
-					renderJson(res);
-					return;
-				} else {
-					renderError(401);
-					return;
-				}
-			} else {
-				renderError(401);
-				return;
-			}
-		}
-	}
+	
+	
 }

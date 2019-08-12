@@ -9,7 +9,6 @@ package com.baomidou.kisso;
  * sso.token.class=com.baomidou.kisso.MyToken
  * </p>
  * 
- * @author hubin
  *
  */
 public class MyToken extends SSOToken {

@@ -16,7 +16,6 @@
 package com.baomidou.kisso.jfinal;
 
 import com.baomidou.kisso.MyToken;
-import com.baomidou.kisso.Res;
 import com.baomidou.kisso.SSOConfig;
 import com.baomidou.kisso.SSOHelper;
 import com.baomidou.kisso.plugin.SSOJfinalInterceptor;
@@ -62,29 +61,18 @@ public class IndexController extends Controller {
 		 * 非拦截器使用减少二次解密
 		 * </p>
 		 */
-		MyToken mt = SSOHelper.attrToken(getRequest());
-		if ( mt != null ) {
-			System.err.println(" Long 用户ID :" + mt.getId());
-			System.err.println(" 登录用户ID : " + mt.getUid());
-			System.err.println(" 自定义属性测试 : " + mt.getAbc());
+		MyToken token = SSOHelper.attrToken(getRequest());
+		if ( token == null ) {
+			redirect("http://sso.test.com:8080/login?ReturnURL=http%253A%252F%252Fsso.test.com%253A8080%252F");
+		}else {
+		    //从token中取出信息，进行相关信息初始化。
+			System.err.println(" Long 用户ID :" + token.getId());
+			System.err.println(" 登录用户ID : " + token.getUid());
+			System.err.println(" 自定义属性测试 : " + token.getAbc());
 		}
-		
 		System.err.println(" 当前注入运行模式是：" + SSOConfig.getInstance().getRunMode());
 		render("index.html");
 	}
+	
 
-
-	/**
-	 * <p>
-	 * 支持APP端测试
-	 * </p>
-	 * 
-	 * @author 成都瘦人  lendo.du@gmail.com
-	 * 
-	 */
-	public void appTest() {
-		Res res = new Res();
-		res.setData("测试请求已成功");
-		renderJson(res);
-	}
 }
